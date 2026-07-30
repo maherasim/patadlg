@@ -6,9 +6,11 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../models/attendance_record.dart';
 import '../../models/live_location.dart';
+import '../../models/union_council.dart';
 import '../../services/attendance_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/live_map/live_map_view.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
 import '../../widgets/status_badge.dart';
@@ -248,6 +250,11 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
               ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.inkMuted)))
               : TabBarView(
                   controller: _tabController,
+                  // The Live Map tab needs its own drag gestures for panning —
+                  // if TabBarView also claims horizontal drags, dragging the
+                  // map gets misread as a swipe-to-next-tab. Tabs are still
+                  // reachable via the tab bar above, just not by swiping.
+                  physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _AttendanceTab(
                       records: _records,
@@ -258,7 +265,11 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
                       onOpenFilters: _openFilterSheet,
                       onExport: _exportAttendance,
                     ),
-                    _LiveMapTab(locations: _liveLocations, onRefresh: _refreshLiveLocations),
+                    _LiveMapTab(
+                      locations: _liveLocations,
+                      unionCouncils: _ucOptions.map(UnionCouncil.fromJson).toList(),
+                      onRefresh: _refreshLiveLocations,
+                    ),
                     _MovementTab(
                       logs: _movements,
                       exporting: _exportingMovement,
@@ -456,31 +467,15 @@ class _RecordTile extends StatelessWidget {
   }
 }
 
-/// Not a real tiled map — mirrors the web dashboard's LiveMap.jsx exactly:
-/// each secretary's lat/lng is normalised against the min/max of the current
-/// set and placed as a percentage position inside a bordered box.
+/// A real OpenStreetMap-tiled live tracking view — secretary dots colored by
+/// freshness + geofence status (see [LiveMapView]), each UC's geofence drawn
+/// as a circle, and a short in-memory movement trail per secretary.
 class _LiveMapTab extends StatelessWidget {
-  const _LiveMapTab({required this.locations, required this.onRefresh});
+  const _LiveMapTab({required this.locations, required this.unionCouncils, required this.onRefresh});
 
   final List<LiveLocation> locations;
+  final List<UnionCouncil> unionCouncils;
   final Future<void> Function() onRefresh;
-
-  List<({LiveLocation loc, double x, double y})> _plotPositions() {
-    final lats = locations.map((l) => l.lat).toList();
-    final lngs = locations.map((l) => l.lng).toList();
-    final minLat = lats.reduce((a, b) => a < b ? a : b);
-    final maxLat = lats.reduce((a, b) => a > b ? a : b);
-    final minLng = lngs.reduce((a, b) => a < b ? a : b);
-    final maxLng = lngs.reduce((a, b) => a > b ? a : b);
-    final padLat = (maxLat - minLat) * 0.28 == 0 ? 0.001 : (maxLat - minLat) * 0.28;
-    final padLng = (maxLng - minLng) * 0.28 == 0 ? 0.001 : (maxLng - minLng) * 0.28;
-
-    return locations.map((l) {
-      final x = ((l.lng - (minLng - padLng)) / (maxLng + padLng - (minLng - padLng))) * 92 + 4;
-      final y = (1 - (l.lat - (minLat - padLat)) / (maxLat + padLat - (minLat - padLat))) * 88 + 4;
-      return (loc: l, x: x, y: y);
-    }).toList();
-  }
 
   void _showDetails(BuildContext context, LiveLocation loc) {
     showModalBottomSheet(
@@ -522,8 +517,7 @@ class _LiveMapTab extends StatelessWidget {
 
   String _minutesAgoLabel(DateTime? lastSeen) {
     if (lastSeen == null) return 'Last seen unknown';
-    final minutes = DateTime.now().difference(lastSeen).inMinutes;
-    return minutes < 1 ? 'Just now' : '$minutes min ago';
+    return detailedTimeAgo(lastSeen);
   }
 
   @override
@@ -551,66 +545,56 @@ class _LiveMapTab extends StatelessWidget {
       );
     }
 
-    final freshCount = locations.where((l) => l.fresh).length;
-    final points = _plotPositions();
+    final freshLocations = locations.where((l) => l.fresh).toList();
+    final freshOutsideCount = freshLocations.where(_isOutside).length;
+    final freshInsideCount = freshLocations.length - freshOutsideCount;
+    final staleCount = locations.length - freshLocations.length;
 
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      child: Column(
         children: [
-          Row(
-            children: [
-              _legendDot(AppColors.primary500, 'Live (<5 min): $freshCount'),
-              const SizedBox(width: 16),
-              _legendDot(AppColors.inkFaint, 'Older: ${locations.length - freshCount}'),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                _legendDot(AppColors.primary500, 'Live, in UC: $freshInsideCount'),
+                _legendDot(AppColors.danger, 'Live, outside UC: $freshOutsideCount'),
+                _legendDot(AppColors.inkFaint, 'Older: $staleCount'),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final boxWidth = constraints.maxWidth;
-              const boxHeight = 440.0;
-              return Container(
-                width: boxWidth,
-                height: boxHeight,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceSubtle,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: LiveMapView(
+                  locations: locations,
+                  unionCouncils: unionCouncils,
+                  onTapLocation: (loc) => _showDetails(context, loc),
                 ),
-                clipBehavior: Clip.hardEdge,
-                child: Stack(
-                  children: points.map((p) {
-                    return Positioned(
-                      left: (boxWidth * p.x / 100) - 14,
-                      top: (boxHeight * p.y / 100) - 14,
-                      child: GestureDetector(
-                        onTap: () => _showDetails(context, p.loc),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: p.loc.fresh ? AppColors.primary500 : AppColors.inkFaint,
-                                shape: BoxShape.circle,
-                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6, offset: const Offset(0, 2))],
-                              ),
-                              child: const Icon(Icons.location_on_rounded, size: 16, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              );
-            },
+              ),
+            ),
           ),
+          const SizedBox(height: 20),
         ],
       ),
     );
+  }
+
+  bool _isOutside(LiveLocation loc) {
+    UnionCouncil? uc;
+    for (final u in unionCouncils) {
+      if (u.id == loc.unionCouncilId) {
+        uc = u;
+        break;
+      }
+    }
+    if (uc == null || !uc.hasGeofence) return false;
+    return distanceMeters(loc.lat, loc.lng, uc.lat!, uc.lng!) > uc.geofenceRadius;
   }
 
   Widget _legendDot(Color color, String label) {

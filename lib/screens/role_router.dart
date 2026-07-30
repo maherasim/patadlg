@@ -1,13 +1,26 @@
 import 'package:flutter/material.dart';
 
 import 'adlg/attendance_screen.dart';
+import 'adlg/cases_screen.dart';
 import 'adlg/dashboard_screen.dart';
+import 'adlg/lbr_screen.dart';
 import 'adlg/reports_screen.dart';
+import 'adlg/secretaries_screen.dart';
+import 'adlg/union_councils_screen.dart';
 import 'coming_soon_screen.dart';
+import 'ddlg/adlgs_screen.dart';
+import 'ddlg/dashboard_screen.dart';
+import 'ddlg/lbr_screen.dart';
+import 'ddlg/reports_screen.dart';
+import 'ddlg/secretaries_screen.dart';
+import 'ddlg/tehsils_screen.dart';
+import 'ddlg/union_councils_screen.dart';
 import 'sec/attendance_screen.dart';
 import 'sec/biometric_enrollment_screen.dart';
+import 'sec/cases_screen.dart';
 import 'sec/dashboard_screen.dart';
 import 'sec/first_login_password_screen.dart';
+import 'sec/lbr_screen.dart';
 import 'sec/reports_screen.dart';
 import 'signed_in_placeholder_screen.dart';
 
@@ -25,6 +38,8 @@ const Map<String, IconData> _kNavIcons = {
   'secretaries': Icons.badge_outlined,
   'newsletters': Icons.newspaper_rounded,
   'inquiries': Icons.description_outlined,
+  'tehsils': Icons.map_outlined,
+  'adlgs': Icons.groups_outlined,
 };
 
 const Map<String, String> _kNavLabels = {
@@ -41,12 +56,13 @@ const Map<String, String> _kNavLabels = {
   'secretaries': 'Secretaries',
   'newsletters': 'Newsletters',
   'inquiries': 'Inquiry',
+  'tehsils': 'Tehsils',
+  'adlgs': 'ADLGs',
 };
 
-/// Picks the right home screen for a freshly-authenticated user. Only
-/// Secretary and ADLG have real screens so far (Dashboard + Attendance) —
-/// every other role still lands on the signed-in checkpoint until their
-/// screens are built.
+/// Picks the right home screen for a freshly-authenticated user. Secretary,
+/// ADLG, and DDLG all have real dashboards now — any other role still lands
+/// on the signed-in checkpoint until its screens are built.
 Widget screenForUser(Map<String, dynamic> user) {
   switch (user['role']) {
     case 'sec':
@@ -56,6 +72,8 @@ Widget screenForUser(Map<String, dynamic> user) {
       return enrolled ? SecDashboardScreen(user: user) : BiometricEnrollmentScreen(user: user);
     case 'adlg':
       return AdlgDashboardScreen(user: user);
+    case 'ddlg':
+      return DdlgDashboardScreen(user: user);
     default:
       return SignedInPlaceholderScreen(user: user);
   }
@@ -67,14 +85,36 @@ Widget screenForUser(Map<String, dynamic> user) {
 /// so new modules just slot in here without touching the navigation shell.
 Widget screenForKey({required String role, required String navKey, required Map<String, dynamic> user}) {
   if (navKey == 'dashboard') {
-    return role == 'adlg' ? AdlgDashboardScreen(user: user) : SecDashboardScreen(user: user);
+    if (role == 'adlg') return AdlgDashboardScreen(user: user);
+    if (role == 'ddlg') return DdlgDashboardScreen(user: user);
+    return SecDashboardScreen(user: user);
   }
-  if (navKey == 'attendance') {
+  if (navKey == 'attendance' && role != 'ddlg') {
     return role == 'adlg' ? AdlgAttendanceScreen(user: user) : SecAttendanceScreen(user: user);
   }
   if (navKey == 'reports') {
-    return role == 'adlg' ? AdlgReportsScreen(user: user) : SecReportsScreen(user: user);
+    if (role == 'adlg') return AdlgReportsScreen(user: user);
+    if (role == 'ddlg') return DdlgReportsScreen(user: user);
+    return SecReportsScreen(user: user);
   }
+  if (navKey == 'cases' && role != 'ddlg') {
+    return role == 'adlg' ? AdlgCasesScreen(user: user) : SecCasesScreen(user: user);
+  }
+  if (navKey == 'lbr') {
+    if (role == 'adlg') return AdlgLbrScreen(user: user);
+    if (role == 'ddlg') return DdlgLbrScreen(user: user);
+    return SecLbrScreen(user: user);
+  }
+  if (navKey == 'union-councils') {
+    if (role == 'adlg') return AdlgUnionCouncilsScreen(user: user);
+    if (role == 'ddlg') return DdlgUnionCouncilsScreen(user: user);
+  }
+  if (navKey == 'secretaries') {
+    if (role == 'adlg') return AdlgSecretariesScreen(user: user);
+    if (role == 'ddlg') return DdlgSecretariesScreen(user: user);
+  }
+  if (navKey == 'tehsils' && role == 'ddlg') return DdlgTehsilsScreen(user: user);
+  if (navKey == 'adlgs' && role == 'ddlg') return DdlgAdlgsScreen(user: user);
 
   return ComingSoonScreen(
     role: role,

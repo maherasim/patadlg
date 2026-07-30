@@ -18,6 +18,12 @@
         android:label="PA TO AD'sLG"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Value injected from android/local.properties (gitignored) via the
+             manifestPlaceholders block in app/build.gradle.kts — never hardcode
+             the raw key here. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
         <!-- Persistent notification + service that keeps live-location pings going
              while the app is backgrounded, per the "track in the background too"
              requirement — see lib/services/location_tracking_service.dart. -->

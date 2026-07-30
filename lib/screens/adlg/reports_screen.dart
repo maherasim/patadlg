@@ -3,11 +3,16 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../models/daily_report.dart';
+import '../../models/performa.dart';
+import '../../services/performa_service.dart';
 import '../../services/report_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
+import '../../widgets/case/document_preview.dart';
+import '../../widgets/performa/create_performa_sheet.dart';
+import '../../widgets/performa/performa_responses_sheet.dart';
 
 class AdlgReportsScreen extends StatefulWidget {
   const AdlgReportsScreen({super.key, required this.user});
@@ -19,16 +24,23 @@ class AdlgReportsScreen extends StatefulWidget {
 }
 
 class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
+  int _tab = 0;
+
   bool _loading = true;
   String? _error;
   List<DailyReport> _reports = [];
   String _search = '';
   bool _exporting = false;
 
+  bool _performasLoading = true;
+  List<Performa> _performas = [];
+  int _totalSecretaries = 0;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadPerformas();
   }
 
   Future<void> _load() async {
@@ -49,6 +61,22 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
         _error = "Couldn't load reports.";
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadPerformas() async {
+    setState(() => _performasLoading = true);
+    try {
+      final result = await PerformaService.instance.indexForAdlg();
+      if (!mounted) return;
+      setState(() {
+        _performas = result.items;
+        _totalSecretaries = result.totalSecretaries;
+        _performasLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _performasLoading = false);
     }
   }
 
@@ -93,6 +121,25 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
     }
   }
 
+  Future<void> _openCreatePerforma() async {
+    final created = await showModalBottomSheet<Performa>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const CreatePerformaSheet(),
+    );
+    if (created != null) _loadPerformas();
+  }
+
+  Future<void> _openResponses(Performa p) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PerformaResponsesSheet(performa: p, totalSecretaries: _totalSecretaries),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -100,49 +147,108 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
       appBar: AppBar(
         title: const Text('Reports'),
         actions: [
-          IconButton(onPressed: _openManageFields, icon: const Icon(Icons.tune_rounded), tooltip: 'Manage Additional Fields'),
-          IconButton(
-            onPressed: _exporting ? null : _export,
-            icon: _exporting
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.ios_share_rounded),
-            tooltip: 'Export Excel',
-          ),
+          if (_tab == 0) IconButton(onPressed: _openManageFields, icon: const Icon(Icons.tune_rounded), tooltip: 'Manage Additional Fields'),
+          if (_tab == 0)
+            IconButton(
+              onPressed: _exporting ? null : _export,
+              icon: _exporting ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.ios_share_rounded),
+              tooltip: 'Export Excel',
+            ),
           const NotificationBell(),
           const LogoutAction(),
         ],
       ),
       drawer: AppDrawer(role: 'adlg', currentKey: 'reports', user: widget.user),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
-          : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.inkMuted)))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    children: [
-                      Text('${_reports.length} reports across your tehsil', style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                      const SizedBox(height: 12),
-                      TextField(
-                        onChanged: (v) => setState(() => _search = v),
-                        decoration: const InputDecoration(
-                          hintText: 'Search secretary, UC, remarks…',
-                          prefixIcon: Icon(Icons.search_rounded, size: 20),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      if (_filtered.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 60),
-                          child: Center(child: Text('No reports match.', style: TextStyle(color: AppColors.inkFaint))),
-                        )
-                      else
-                        ..._filtered.map((r) => _ReportTile(report: r, onTap: () => _openDetail(r))),
-                    ],
-                  ),
-                ),
+      floatingActionButton: _tab == 1
+          ? FloatingActionButton.extended(onPressed: _openCreatePerforma, icon: const Icon(Icons.add_rounded), label: const Text('Publish Performa'))
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            child: Row(
+              children: [
+                Expanded(child: _tabPill('Daily Reports', 0)),
+                const SizedBox(width: 10),
+                Expanded(child: _tabPill('Performas', 1)),
+              ],
+            ),
+          ),
+          Expanded(child: _tab == 0 ? _buildDailyTab() : _buildPerformasTab()),
+        ],
+      ),
     );
+  }
+
+  Widget _tabPill(String label, int index) {
+    final selected = _tab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _tab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary500 : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? AppColors.primary500 : AppColors.border),
+        ),
+        child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : AppColors.inkMuted)),
+      ),
+    );
+  }
+
+  Widget _buildDailyTab() {
+    return _loading
+        ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
+        : _error != null
+            ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.inkMuted)))
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    Text('${_reports.length} reports across your tehsil', style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
+                    const SizedBox(height: 12),
+                    TextField(
+                      onChanged: (v) => setState(() => _search = v),
+                      decoration: const InputDecoration(
+                        hintText: 'Search secretary, UC, remarks…',
+                        prefixIcon: Icon(Icons.search_rounded, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (_filtered.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 60),
+                        child: Center(child: Text('No reports match.', style: TextStyle(color: AppColors.inkFaint))),
+                      )
+                    else
+                      ..._filtered.map((r) => _ReportTile(report: r, onTap: () => _openDetail(r))),
+                  ],
+                ),
+              );
+  }
+
+  Widget _buildPerformasTab() {
+    return _performasLoading
+        ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
+        : RefreshIndicator(
+            onRefresh: _loadPerformas,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
+              children: [
+                Text('$_totalSecretaries secretaries in your tehsil', style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
+                const SizedBox(height: 12),
+                if (_performas.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: Center(child: Text('No performas published yet.', style: TextStyle(color: AppColors.inkFaint))),
+                  )
+                else
+                  ..._performas.map((p) => _PerformaCard(performa: p, totalSecretaries: _totalSecretaries, onTap: () => _openResponses(p))),
+              ],
+            ),
+          );
   }
 }
 
@@ -296,7 +402,19 @@ class _ReportDetailSheetState extends State<_ReportDetailSheet> {
             ],
             if (report.attachmentUrl != null) ...[
               const SizedBox(height: 18),
-              Text('📎 Attachment: ${report.attachmentUrl}', style: const TextStyle(fontSize: 12, color: AppColors.primary600), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const Text('Attachment', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () => openDocument(context, report.attachmentUrl!),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.attach_file_rounded, size: 15, color: AppColors.primary600),
+                    SizedBox(width: 6),
+                    Text('Open attachment', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primary600)),
+                  ],
+                ),
+              ),
             ],
             const SizedBox(height: 24),
             if (!_reviewed)
@@ -497,6 +615,120 @@ class _ManageFieldsSheetState extends State<_ManageFieldsSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PerformaCard extends StatefulWidget {
+  const _PerformaCard({required this.performa, required this.totalSecretaries, required this.onTap});
+
+  final Performa performa;
+  final int totalSecretaries;
+  final VoidCallback onTap;
+
+  @override
+  State<_PerformaCard> createState() => _PerformaCardState();
+}
+
+class _PerformaCardState extends State<_PerformaCard> {
+  bool _downloadingTemplate = false;
+
+  Future<void> _downloadTemplate() async {
+    setState(() => _downloadingTemplate = true);
+    try {
+      final file = await PerformaService.instance.downloadTemplateForAdlg(widget.performa.id);
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Performa Template'));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't download the template.")));
+    } finally {
+      if (mounted) setState(() => _downloadingTemplate = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final performa = widget.performa;
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: widget.onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppColors.primary500.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                child: Center(child: Text(performa.isExcelMode ? '📊' : '📝', style: const TextStyle(fontSize: 18))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(performa.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (performa.description != null && performa.description!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(performa.description!, style: const TextStyle(fontSize: 10.5, color: AppColors.inkMuted), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _miniBadge(performa.isExcelMode ? 'Excel' : 'Form', AppColors.accent600),
+                        const SizedBox(width: 6),
+                        _miniBadge(performa.isDaily ? 'Daily' : 'One-time', AppColors.primary600),
+                      ],
+                    ),
+                    if (performa.deadline != null) ...[
+                      const SizedBox(height: 4),
+                      Text('Due ${performa.deadline!.split('T').first}', style: const TextStyle(fontSize: 10, color: AppColors.inkFaint)),
+                    ],
+                    if (performa.isExcelMode && performa.hasTemplate) ...[
+                      const SizedBox(height: 6),
+                      InkWell(
+                        onTap: _downloadingTemplate ? null : _downloadTemplate,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _downloadingTemplate
+                                ? const SizedBox(height: 12, width: 12, child: CircularProgressIndicator(strokeWidth: 1.6))
+                                : const Icon(Icons.download_rounded, size: 13, color: AppColors.primary600),
+                            const SizedBox(width: 4),
+                            const Text('Download blank template', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.primary600)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('${performa.responsesCount ?? 0}/${widget.totalSecretaries}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary700)),
+                  const SizedBox(height: 2),
+                  const Text('responded', style: TextStyle(fontSize: 9.5, color: AppColors.inkFaint)),
+                ],
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.inkFaint),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 250.ms);
+  }
+
+  Widget _miniBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color)),
     );
   }
 }

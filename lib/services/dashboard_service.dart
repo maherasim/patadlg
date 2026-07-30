@@ -112,6 +112,85 @@ class AdlgDashboardData {
   final List<DashboardActivity> recentActivity;
 }
 
+class CaseDispositionSlice {
+  CaseDispositionSlice({required this.key, required this.label, required this.count});
+
+  factory CaseDispositionSlice.fromJson(Map<String, dynamic> json) => CaseDispositionSlice(
+        key: json['key'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        count: (json['count'] as num?)?.toInt() ?? 0,
+      );
+
+  final String key;
+  final String label;
+  final int count;
+}
+
+class DdlgDashboardData {
+  DdlgDashboardData({
+    required this.tehsils,
+    required this.adlgs,
+    required this.unionCouncils,
+    required this.secretaries,
+    required this.vacantUcs,
+    required this.activeCases,
+    required this.totalCases,
+    required this.urgentCases,
+    required this.lbrPendingMyApproval,
+    required this.pendingNewsletters,
+    required this.todayMarked,
+    required this.todayTotal,
+    required this.todayRate,
+    required this.attendanceTrend,
+    required this.casePipeline,
+    required this.caseDisposition,
+    required this.recentActivity,
+  });
+
+  factory DdlgDashboardData.fromJson(Map<String, dynamic> json) {
+    final kpis = json['kpis'] as Map<String, dynamic>? ?? {};
+    final todayAttendance = json['today_attendance'] as Map<String, dynamic>? ?? {};
+
+    return DdlgDashboardData(
+      tehsils: (kpis['tehsils'] as num?)?.toInt() ?? 0,
+      adlgs: (kpis['adlgs'] as num?)?.toInt() ?? 0,
+      unionCouncils: (kpis['union_councils'] as num?)?.toInt() ?? 0,
+      secretaries: (kpis['secretaries'] as num?)?.toInt() ?? 0,
+      vacantUcs: (kpis['vacant_ucs'] as num?)?.toInt() ?? 0,
+      activeCases: (kpis['active_cases'] as num?)?.toInt() ?? 0,
+      totalCases: (kpis['total_cases'] as num?)?.toInt() ?? 0,
+      urgentCases: (kpis['urgent_cases'] as num?)?.toInt() ?? 0,
+      lbrPendingMyApproval: (kpis['lbr_pending_my_approval'] as num?)?.toInt() ?? 0,
+      pendingNewsletters: (kpis['pending_newsletters'] as num?)?.toInt() ?? 0,
+      todayMarked: (todayAttendance['marked'] as num?)?.toInt() ?? 0,
+      todayTotal: (todayAttendance['total'] as num?)?.toInt() ?? 0,
+      todayRate: (todayAttendance['rate'] as num?)?.toInt() ?? 0,
+      attendanceTrend: ((json['attendance_trend'] as List?) ?? []).cast<Map<String, dynamic>>().map(AttendanceTrendPoint.fromJson).toList(),
+      casePipeline: ((json['case_pipeline'] as List?) ?? []).cast<Map<String, dynamic>>().map(CasePipelineStage.fromJson).toList(),
+      caseDisposition: ((json['case_disposition'] as List?) ?? []).cast<Map<String, dynamic>>().map(CaseDispositionSlice.fromJson).toList(),
+      recentActivity: ((json['recent_audit'] as List?) ?? []).cast<Map<String, dynamic>>().map(DashboardActivity.fromJson).toList(),
+    );
+  }
+
+  final int tehsils;
+  final int adlgs;
+  final int unionCouncils;
+  final int secretaries;
+  final int vacantUcs;
+  final int activeCases;
+  final int totalCases;
+  final int urgentCases;
+  final int lbrPendingMyApproval;
+  final int pendingNewsletters;
+  final int todayMarked;
+  final int todayTotal;
+  final int todayRate;
+  final List<AttendanceTrendPoint> attendanceTrend;
+  final List<CasePipelineStage> casePipeline;
+  final List<CaseDispositionSlice> caseDisposition;
+  final List<DashboardActivity> recentActivity;
+}
+
 /// Powers the mobile Dashboard tab for both roles — the Secretary summary is
 /// computed client-side from the same three endpoints the web dashboard reads
 /// (attendance/reports/cases), while ADLG has a dedicated aggregate endpoint.
@@ -181,5 +260,10 @@ class DashboardService {
   Future<AdlgDashboardData> adlgDashboard() async {
     final response = await _dio.get('/api/adlg/dashboard');
     return AdlgDashboardData.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<DdlgDashboardData> ddlgDashboard() async {
+    final response = await _dio.get('/api/ddlg/dashboard');
+    return DdlgDashboardData.fromJson(response.data as Map<String, dynamic>);
   }
 }

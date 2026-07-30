@@ -8,6 +8,7 @@ import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
 import 'attendance_screen.dart';
 import 'biometric_enrollment_screen.dart';
+import 'cases_screen.dart';
 import 'reports_screen.dart';
 
 class SecDashboardScreen extends StatefulWidget {
@@ -101,6 +102,9 @@ class _SecDashboardScreenState extends State<SecDashboardScreen> {
                             label: 'Active Cases',
                             value: '${_summary!.activeCases}',
                             tone: AppColors.info,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => SecCasesScreen(user: widget.user)),
+                            ),
                           ),
                           _KpiTile(
                             icon: Icons.hourglass_bottom_rounded,
@@ -149,17 +153,18 @@ class _SecDashboardScreenState extends State<SecDashboardScreen> {
 }
 
 class _KpiTile extends StatelessWidget {
-  const _KpiTile({required this.icon, required this.label, required this.value, required this.tone, this.sub});
+  const _KpiTile({required this.icon, required this.label, required this.value, required this.tone, this.sub, this.onTap});
 
   final IconData icon;
   final String label;
   final String value;
   final Color tone;
   final String? sub;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final content = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
       child: Column(
@@ -178,6 +183,14 @@ class _KpiTile extends StatelessWidget {
           if (sub != null) Text(sub!, style: const TextStyle(fontSize: 10, color: AppColors.inkFaint)),
         ],
       ),
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(borderRadius: BorderRadius.circular(18), onTap: onTap, child: content),
     );
   }
 }

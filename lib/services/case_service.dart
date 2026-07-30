@@ -335,6 +335,28 @@ class CaseService {
 
   // --------------------------------------------------------------- Export
 
+  Future<File> _downloadPdf(String path, String fallbackFilename) async {
+    final response = await _dio.get<List<int>>(path, options: Options(responseType: ResponseType.bytes));
+
+    if (response.statusCode != 200 || response.data == null) {
+      throw DioException(requestOptions: response.requestOptions, response: response);
+    }
+
+    final filename = _filenameFromContentDisposition(response.headers.value('content-disposition')) ?? fallbackFilename;
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(response.data!);
+    return file;
+  }
+
+  Future<File> downloadNotesheet({required String role, required int caseId}) {
+    return _downloadPdf('/api/$role/cases/$caseId/notesheet', 'Notesheet.pdf');
+  }
+
+  Future<File> downloadFullCaseFile({required String role, required int caseId}) {
+    return _downloadPdf('/api/$role/cases/$caseId/full-file', 'Case_File.pdf');
+  }
+
   /// ADLG-only Excel export (case summary + detail + hearings), downloaded
   /// and saved locally, ready to hand to the share sheet.
   Future<File> exportCases({String? status}) async {

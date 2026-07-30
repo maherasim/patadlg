@@ -1,15 +1,20 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../models/daily_report.dart';
+import '../../models/performa.dart';
+import '../../services/performa_service.dart';
 import '../../services/report_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
+import '../../widgets/case/document_preview.dart';
+import '../../widgets/performa/fill_performa_sheet.dart';
+import '../../widgets/performa/upload_performa_sheet.dart';
 
 String _todayStr() {
   final now = DateTime.now();
@@ -26,6 +31,8 @@ class SecReportsScreen extends StatefulWidget {
 }
 
 class _SecReportsScreenState extends State<SecReportsScreen> {
+  int _tab = 0;
+
   bool _loading = true;
   String? _loadError;
   List<DailyReport> _history = [];
@@ -38,10 +45,13 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
   int _complaint = 0;
   final Map<int, TextEditingController> _fieldControllers = {};
   final List<CustomFieldInput> _customFields = [];
-  XFile? _attachment;
+  File? _attachment;
 
   bool _submitting = false;
   String? _submitError;
+
+  bool _performasLoading = true;
+  List<Performa> _performas = [];
 
   @override
   void initState() {
@@ -59,6 +69,8 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
   }
 
   bool get _submittedToday => _history.any((r) => r.reportDate == _todayStr());
+
+  int get _pendingPerformas => _performas.where((p) => p.isDaily ? (p.needsToday ?? true) : p.myResponse == null).length;
 
   Future<void> _load() async {
     setState(() {
@@ -87,11 +99,31 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
         _loading = false;
       });
     }
+    _loadPerformas();
+  }
+
+  Future<void> _loadPerformas() async {
+    setState(() => _performasLoading = true);
+    try {
+      final performas = await PerformaService.instance.indexForSecretary();
+      if (!mounted) return;
+      setState(() {
+        _performas = performas;
+        _performasLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _performasLoading = false);
+    }
   }
 
   Future<void> _pickAttachment() async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (file != null) setState(() => _attachment = file);
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+    );
+    final path = (result != null && result.files.isNotEmpty) ? result.files.first.path : null;
+    if (path != null) setState(() => _attachment = File(path));
   }
 
   Future<void> _submit() async {
@@ -117,7 +149,7 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
       complaintCount: _complaint,
       fieldResponses: fieldResponses,
       customFields: _customFields,
-      attachment: _attachment != null ? File(_attachment!.path) : null,
+      attachment: _attachment,
     );
 
     if (!mounted) return;
@@ -146,39 +178,119 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
     });
   }
 
+  Future<void> _openPerforma(Performa p) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => p.isExcelMode ? UploadPerformaSheet(performa: p) : FillPerformaSheet(performa: p),
+    );
+    if (updated == true) _loadPerformas();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.surfaceSubtle,
       appBar: AppBar(title: const Text('Reports'), actions: const [NotificationBell(), LogoutAction()]),
       drawer: AppDrawer(role: 'sec', currentKey: 'reports', user: widget.user),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
-          : _loadError != null
-              ? Center(child: Text(_loadError!, style: const TextStyle(color: AppColors.inkMuted)))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    children: [
-                      if (_submittedToday)
-                        _AlreadySubmittedCard(report: _history.firstWhere((r) => r.reportDate == _todayStr()))
-                      else
-                        _buildForm(),
-                      const SizedBox(height: 28),
-                      const Text('Report History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                      const SizedBox(height: 10),
-                      if (_history.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Center(child: Text('No reports submitted yet.', style: TextStyle(color: AppColors.inkFaint))),
-                        )
-                      else
-                        ..._history.map((r) => _ReportHistoryTile(report: r)),
-                    ],
-                  ),
-                ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            child: Row(
+              children: [
+                Expanded(child: _tabPill('Daily Report', 0, null)),
+                const SizedBox(width: 10),
+                Expanded(child: _tabPill('ADLG Performas', 1, _pendingPerformas)),
+              ],
+            ),
+          ),
+          Expanded(child: _tab == 0 ? _buildDailyTab() : _buildPerformasTab()),
+        ],
+      ),
     );
+  }
+
+  Widget _tabPill(String label, int index, int? badge) {
+    final selected = _tab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _tab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary500 : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? AppColors.primary500 : AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : AppColors.inkMuted)),
+            if (badge != null && badge > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: selected ? Colors.white : AppColors.danger, borderRadius: BorderRadius.circular(20)),
+                child: Text('$badge', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: selected ? AppColors.primary700 : Colors.white)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailyTab() {
+    return _loading
+        ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
+        : _loadError != null
+            ? Center(child: Text(_loadError!, style: const TextStyle(color: AppColors.inkMuted)))
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    if (_submittedToday)
+                      _AlreadySubmittedCard(report: _history.firstWhere((r) => r.reportDate == _todayStr()))
+                    else
+                      _buildForm(),
+                    const SizedBox(height: 28),
+                    const Text('Report History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                    const SizedBox(height: 10),
+                    if (_history.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: Center(child: Text('No reports submitted yet.', style: TextStyle(color: AppColors.inkFaint))),
+                      )
+                    else
+                      ..._history.map((r) => _ReportHistoryTile(report: r)),
+                  ],
+                ),
+              );
+  }
+
+  Widget _buildPerformasTab() {
+    return _performasLoading
+        ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
+        : RefreshIndicator(
+            onRefresh: _loadPerformas,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              children: [
+                Text('${_performas.length} performas from your ADLG', style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
+                const SizedBox(height: 12),
+                if (_performas.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: Center(child: Text('No performas published yet.', style: TextStyle(color: AppColors.inkFaint))),
+                  )
+                else
+                  ..._performas.map((p) => _PerformaTile(performa: p, onTap: () => _openPerforma(p))),
+              ],
+            ),
+          );
   }
 
   Widget _buildForm() {
@@ -278,7 +390,7 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _attachment!.name,
+                    _attachment!.path.split('/').last,
                     style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -447,10 +559,101 @@ class _ReportHistoryTile extends StatelessWidget {
           ],
           if (report.attachmentUrl != null) ...[
             const SizedBox(height: 6),
-            const Text('📎 Attachment', style: TextStyle(fontSize: 11.5, color: AppColors.primary600, fontWeight: FontWeight.w600)),
+            InkWell(
+              onTap: () => openDocument(context, report.attachmentUrl!),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.attach_file_rounded, size: 14, color: AppColors.primary600),
+                  SizedBox(width: 4),
+                  Text('Attachment', style: TextStyle(fontSize: 11.5, color: AppColors.primary600, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _PerformaTile extends StatelessWidget {
+  const _PerformaTile({required this.performa, required this.onTap});
+
+  final Performa performa;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final done = performa.isDoneForSecretary;
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: done ? null : onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppColors.primary500.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                child: Center(child: Text(performa.isExcelMode ? '📊' : '📝', style: const TextStyle(fontSize: 18))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(performa.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (performa.description != null && performa.description!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(performa.description!, style: const TextStyle(fontSize: 10.5, color: AppColors.inkMuted), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _miniBadge(performa.isDaily ? 'Daily' : 'One-time', AppColors.primary600),
+                        if (performa.deadline != null) ...[
+                          const SizedBox(width: 6),
+                          Text('Due ${performa.deadline!.split('T').first}', style: const TextStyle(fontSize: 10, color: AppColors.inkFaint)),
+                        ],
+                      ],
+                    ),
+                    if (performa.isDaily && (performa.needsToday ?? false)) ...[
+                      const SizedBox(height: 4),
+                      _miniBadge('Needs update today', AppColors.danger),
+                    ],
+                  ],
+                ),
+              ),
+              done
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+                      child: const Text('✓ Submitted', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.success)),
+                    )
+                  : ElevatedButton(
+                      onPressed: onTap,
+                      style: ElevatedButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), textStyle: const TextStyle(fontSize: 11.5)),
+                      child: Text(performa.isExcelMode ? 'Upload File' : 'Fill Performa'),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 250.ms);
+  }
+
+  Widget _miniBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color)),
     );
   }
 }

@@ -33,3 +33,19 @@ String timeAgo(DateTime dt) {
   final days = hours ~/ 24;
   return '${days}d ago';
 }
+
+/// Like [timeAgo] but mixes two units instead of truncating to one — "12h
+/// 37m ago" rather than just "12h ago" (or, worse, a raw "757 min ago").
+/// Used wherever the exact staleness of a reading matters, e.g. the Live
+/// Map's "last seen" detail.
+String detailedTimeAgo(DateTime dt) {
+  final minutes = DateTime.now().difference(dt).inMinutes;
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return '$minutes min ago';
+  final hours = minutes ~/ 60;
+  final remMinutes = minutes % 60;
+  if (hours < 24) return remMinutes == 0 ? '${hours}h ago' : '${hours}h ${remMinutes}m ago';
+  final days = hours ~/ 24;
+  final remHours = hours % 24;
+  return remHours == 0 ? '${days}d ago' : '${days}d ${remHours}h ago';
+}

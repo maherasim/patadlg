@@ -125,6 +125,13 @@ class ReportService {
     return list.map(DailyReport.fromJson).toList();
   }
 
+  /// DDLG's district-wide reports feed — read-only, newest 200.
+  Future<List<DailyReport>> indexForDdlg() async {
+    final response = await _dio.get('/api/ddlg/reports');
+    final list = (response.data['data'] as List).cast<Map<String, dynamic>>();
+    return list.map(DailyReport.fromJson).toList();
+  }
+
   Future<bool> markReviewed(int reportId) async {
     try {
       final response = await _dio.patch('/api/adlg/reports/$reportId/mark-reviewed');
@@ -166,11 +173,13 @@ class ReportService {
 
   /// Downloads the styled reports Excel export and saves it to the app's
   /// temp directory, ready to hand to the share sheet.
-  Future<File> exportReports() async {
-    final response = await _dio.get<List<int>>(
-      '/api/adlg/reports/export',
-      options: Options(responseType: ResponseType.bytes),
-    );
+  Future<File> exportReports() => _downloadExport('/api/adlg/reports/export');
+
+  /// DDLG's district-wide export — same styled workbook, wider scope.
+  Future<File> exportReportsForDdlg() => _downloadExport('/api/ddlg/reports/export');
+
+  Future<File> _downloadExport(String path) async {
+    final response = await _dio.get<List<int>>(path, options: Options(responseType: ResponseType.bytes));
 
     if (response.statusCode != 200 || response.data == null) {
       throw DioException(requestOptions: response.requestOptions, response: response);

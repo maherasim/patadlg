@@ -24,6 +24,8 @@ class DailyReport {
     required this.id,
     this.secretary,
     this.unionCouncil,
+    this.tehsil,
+    this.district,
     required this.reportDate,
     required this.remarks,
     required this.nikahCount,
@@ -40,6 +42,8 @@ class DailyReport {
         id: json['id'] as int,
         secretary: json['secretary'] as String?,
         unionCouncil: json['union_council'] as String?,
+        tehsil: json['tehsil'] as String?,
+        district: json['district'] as String?,
         reportDate: json['report_date'] as String? ?? '',
         remarks: json['remarks'] as String? ?? '',
         nikahCount: (json['nikah_count'] as num?)?.toInt() ?? 0,
@@ -58,6 +62,8 @@ class DailyReport {
   final int id;
   final String? secretary;
   final String? unionCouncil;
+  final String? tehsil;
+  final String? district;
   final String reportDate;
   final String remarks;
   final int nikahCount;

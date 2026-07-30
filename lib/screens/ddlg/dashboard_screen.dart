@@ -6,22 +6,27 @@ import '../../theme/app_theme.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
-import '../coming_soon_screen.dart';
 import '../role_router.dart';
 
-class AdlgDashboardScreen extends StatefulWidget {
-  const AdlgDashboardScreen({super.key, required this.user});
+const Map<String, Color> _kDispositionColors = {
+  'DISPOSED_RECONCILED': AppColors.success,
+  'DISPOSED_EFFECTIVE': AppColors.primary500,
+  'FILED_NON_RESPONSE': AppColors.danger,
+};
+
+class DdlgDashboardScreen extends StatefulWidget {
+  const DdlgDashboardScreen({super.key, required this.user});
 
   final Map<String, dynamic> user;
 
   @override
-  State<AdlgDashboardScreen> createState() => _AdlgDashboardScreenState();
+  State<DdlgDashboardScreen> createState() => _DdlgDashboardScreenState();
 }
 
-class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
+class _DdlgDashboardScreenState extends State<DdlgDashboardScreen> {
   bool _loading = true;
   String? _error;
-  AdlgDashboardData? _data;
+  DdlgDashboardData? _data;
 
   @override
   void initState() {
@@ -35,7 +40,7 @@ class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
       _error = null;
     });
     try {
-      final data = await DashboardService.instance.adlgDashboard();
+      final data = await DashboardService.instance.ddlgDashboard();
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -55,7 +60,7 @@ class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
     return Scaffold(
       backgroundColor: AppColors.surfaceSubtle,
       appBar: AppBar(title: const Text('Dashboard'), actions: const [NotificationBell(), LogoutAction()]),
-      drawer: AppDrawer(role: 'adlg', currentKey: 'dashboard', user: widget.user),
+      drawer: AppDrawer(role: 'ddlg', currentKey: 'dashboard', user: widget.user),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -70,49 +75,51 @@ class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context, AdlgDashboardData data) {
+  Widget _buildContent(BuildContext context, DdlgDashboardData data) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
-        const Text('Real-time snapshot of your tehsil.', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
+        const Text('District Oversight & Administration.', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
         const SizedBox(height: 14),
-        if (data.pendingNewsletters > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Material(
-              color: AppColors.accent100,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => ComingSoonScreen(
-                    role: 'adlg',
-                    user: widget.user,
-                    currentKey: 'newsletters',
-                    title: 'Newsletters',
-                    icon: Icons.newspaper_rounded,
-                  ),
-                )),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.accent400.withValues(alpha: 0.4))),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.newspaper_rounded, size: 18, color: AppColors.accent600),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${data.pendingNewsletters} newsletter${data.pendingNewsletters > 1 ? 's' : ''} awaiting your response',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.accent600),
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_rounded, size: 15, color: AppColors.accent600),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+        if (data.lbrPendingMyApproval > 0)
+          _alertBanner(
+            navKey: 'lbr',
+            icon: Icons.child_friendly_rounded,
+            text: '${data.lbrPendingMyApproval} birth registration delay${data.lbrPendingMyApproval > 1 ? 's' : ''} awaiting your final approval',
           ),
+        if (data.pendingNewsletters > 0)
+          _alertBanner(
+            navKey: 'newsletters',
+            icon: Icons.newspaper_rounded,
+            text: '${data.pendingNewsletters} newsletter${data.pendingNewsletters > 1 ? 's' : ''} awaiting your response',
+          ),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.35,
+          children: [
+            _KpiTile(icon: Icons.map_outlined, label: 'Tehsils', value: '${data.tehsils}', sub: '${data.adlgs} ADLGs assigned', tone: AppColors.primary500),
+            _KpiTile(icon: Icons.badge_outlined, label: 'Secretaries', value: '${data.secretaries}', sub: '${data.unionCouncils} Union Councils', tone: AppColors.primary500),
+            _KpiTile(
+              icon: Icons.warning_amber_rounded,
+              label: 'Vacant UCs',
+              value: '${data.vacantUcs}',
+              sub: 'No secretary assigned',
+              tone: data.vacantUcs > 0 ? AppColors.danger : AppColors.primary500,
+            ),
+            _KpiTile(
+              icon: Icons.fingerprint_rounded,
+              label: "Today's Attendance",
+              value: '${data.todayRate}%',
+              sub: '${data.todayMarked} of ${data.todayTotal} secretaries',
+              tone: data.todayRate >= 70 ? AppColors.primary500 : (data.todayRate >= 40 ? AppColors.accent500 : AppColors.danger),
+            ),
+          ],
+        ).animate().fadeIn(duration: 350.ms),
+        const SizedBox(height: 12),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -130,31 +137,29 @@ class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
               tone: data.urgentCases > 0 ? AppColors.danger : AppColors.primary500,
             ),
             _KpiTile(
-              icon: Icons.warning_amber_rounded,
-              label: 'Vacant UCs',
-              value: '${data.vacantUcs}',
-              sub: 'No secretary assigned',
-              tone: data.vacantUcs > 0 ? AppColors.danger : AppColors.primary500,
+              icon: Icons.child_friendly_rounded,
+              label: 'LBR Awaiting Me',
+              value: '${data.lbrPendingMyApproval}',
+              sub: 'Over-7-years approvals',
+              tone: data.lbrPendingMyApproval > 0 ? AppColors.danger : AppColors.primary500,
             ),
-            _KpiTile(
-              icon: Icons.fingerprint_rounded,
-              label: "Today's Attendance",
-              value: '${data.todayRate}%',
-              sub: '${data.todayMarked} of ${data.todayTotal} secretaries',
-              tone: data.todayRate >= 70 ? AppColors.primary500 : (data.todayRate >= 40 ? AppColors.accent500 : AppColors.danger),
-            ),
+            _KpiTile(icon: Icons.newspaper_rounded, label: 'Pending Newsletters', value: '${data.pendingNewsletters}', tone: AppColors.accent500),
           ],
-        ).animate().fadeIn(duration: 350.ms),
+        ),
         const SizedBox(height: 22),
         _SectionLabel('Case Pipeline'),
         const SizedBox(height: 10),
         _CasePipelineCard(stages: data.casePipeline),
         const SizedBox(height: 22),
+        _SectionLabel('Case Outcomes'),
+        const SizedBox(height: 10),
+        _CaseDispositionCard(slices: data.caseDisposition),
+        const SizedBox(height: 22),
         _SectionLabel('Attendance Trend · last 14 days'),
         const SizedBox(height: 10),
         _AttendanceTrendCard(points: data.attendanceTrend, marked: data.todayMarked, total: data.todayTotal, rate: data.todayRate),
         const SizedBox(height: 22),
-        _SectionLabel('Quick Actions'),
+        _SectionLabel('Quick Links'),
         const SizedBox(height: 10),
         _QuickActionsCard(user: widget.user),
         const SizedBox(height: 22),
@@ -162,6 +167,32 @@ class _AdlgDashboardScreenState extends State<AdlgDashboardScreen> {
         const SizedBox(height: 10),
         _RecentActivityCard(activity: data.recentActivity),
       ],
+    );
+  }
+
+  Widget _alertBanner({required String navKey, required IconData icon, required String text}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: AppColors.accent100,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screenForKey(role: 'ddlg', navKey: navKey, user: widget.user))),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.accent400.withValues(alpha: 0.4))),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.accent600),
+                const SizedBox(width: 10),
+                Expanded(child: Text(text, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.accent600))),
+                const Icon(Icons.arrow_forward_rounded, size: 15, color: AppColors.accent600),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -242,17 +273,67 @@ class _CasePipelineCard extends StatelessWidget {
                       const SizedBox(height: 5),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: fraction,
-                          minHeight: 7,
-                          backgroundColor: AppColors.primary50,
-                          valueColor: const AlwaysStoppedAnimation(AppColors.primary500),
-                        ),
+                        child: LinearProgressIndicator(value: fraction, minHeight: 7, backgroundColor: AppColors.primary50, valueColor: const AlwaysStoppedAnimation(AppColors.primary500)),
                       ),
                     ],
                   ),
                 );
               }).toList(),
+            ),
+    );
+  }
+}
+
+class _CaseDispositionCard extends StatelessWidget {
+  const _CaseDispositionCard({required this.slices});
+
+  final List<CaseDispositionSlice> slices;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = slices.fold<int>(0, (sum, s) => sum + s.count);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
+      child: total == 0
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('No disposed cases yet.', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    height: 14,
+                    child: Row(
+                      children: slices.where((s) => s.count > 0).map((s) {
+                        return Expanded(
+                          flex: s.count,
+                          child: Container(color: _kDispositionColors[s.key] ?? AppColors.inkFaint),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 8,
+                  children: slices.map((s) {
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 9, height: 9, decoration: BoxDecoration(color: _kDispositionColors[s.key] ?? AppColors.inkFaint, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text('${s.label} (${s.count})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.inkMuted)),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
     );
   }
@@ -284,12 +365,7 @@ class _AttendanceTrendCard extends StatelessWidget {
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: (rate / 100).clamp(0, 1),
-              minHeight: 8,
-              backgroundColor: AppColors.primary50,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary500),
-            ),
+            child: LinearProgressIndicator(value: (rate / 100).clamp(0, 1), minHeight: 8, backgroundColor: AppColors.primary50, valueColor: const AlwaysStoppedAnimation(AppColors.primary500)),
           ),
           const SizedBox(height: 18),
           if (points.isEmpty)
@@ -309,12 +385,7 @@ class _AttendanceTrendCard extends StatelessWidget {
                         child: FractionallySizedBox(
                           heightFactor: heightFraction,
                           alignment: Alignment.bottomCenter,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.primary400,
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-                            ),
-                          ),
+                          child: Container(decoration: BoxDecoration(color: AppColors.primary400, borderRadius: const BorderRadius.vertical(top: Radius.circular(3)))),
                         ),
                       ),
                     ),
@@ -334,9 +405,9 @@ class _QuickActionsCard extends StatelessWidget {
   final Map<String, dynamic> user;
 
   static const _actions = [
+    (navKey: 'tehsils', label: 'View Tehsils', icon: Icons.map_outlined),
+    (navKey: 'adlgs', label: 'View ADLGs', icon: Icons.groups_outlined),
     (navKey: 'cases', label: 'Review Cases', icon: Icons.gavel_rounded),
-    (navKey: 'union-councils', label: 'New Union Council', icon: Icons.add_business_rounded),
-    (navKey: 'secretaries', label: 'Create Secretary', icon: Icons.person_add_alt_1_rounded),
   ];
 
   @override
@@ -348,9 +419,7 @@ class _QuickActionsCard extends StatelessWidget {
           return Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => screenForKey(role: 'adlg', navKey: a.navKey, user: user),
-              )),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screenForKey(role: 'ddlg', navKey: a.navKey, user: user))),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                 child: Row(
@@ -391,9 +460,7 @@ class _RecentActivityCard extends StatelessWidget {
                 for (var i = 0; i < items.length; i++)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      border: i == items.length - 1 ? null : const Border(bottom: BorderSide(color: AppColors.border, width: 0.7)),
-                    ),
+                    decoration: BoxDecoration(border: i == items.length - 1 ? null : const Border(bottom: BorderSide(color: AppColors.border, width: 0.7))),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

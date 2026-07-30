@@ -73,6 +73,37 @@ const List<DrawerNavGroup> kAdlgNavGroups = [
   ]),
 ];
 
+/// Mirrors DdlgLayout.jsx's NAV_GROUPS.
+const List<DrawerNavGroup> kDdlgNavGroups = [
+  DrawerNavGroup(label: 'Overview', items: [
+    DrawerNavItem(navKey: 'dashboard', label: 'Dashboard', icon: Icons.grid_view_rounded),
+  ]),
+  DrawerNavGroup(label: 'Registry', items: [
+    DrawerNavItem(navKey: 'cases', label: 'Divorce/Khula Cases', icon: Icons.gavel_rounded),
+    DrawerNavItem(navKey: 'lbr', label: 'Birth Registration', icon: Icons.child_friendly_rounded),
+    DrawerNavItem(navKey: 'ldr', label: 'Death Registration', icon: Icons.inventory_2_outlined),
+  ]),
+  DrawerNavGroup(label: 'District Oversight', items: [
+    DrawerNavItem(navKey: 'tehsils', label: 'Tehsils', icon: Icons.map_outlined),
+    DrawerNavItem(navKey: 'union-councils', label: 'Union Councils', icon: Icons.account_balance_rounded),
+    DrawerNavItem(navKey: 'secretaries', label: 'Secretaries', icon: Icons.badge_outlined),
+    DrawerNavItem(navKey: 'adlgs', label: 'ADLGs', icon: Icons.groups_outlined),
+  ]),
+  DrawerNavGroup(label: 'Reports', items: [
+    DrawerNavItem(navKey: 'attendance', label: 'Attendance', icon: Icons.fingerprint_rounded),
+    DrawerNavItem(navKey: 'reports', label: 'Daily Reports', icon: Icons.assignment_outlined),
+  ]),
+  DrawerNavGroup(label: 'Communications', items: [
+    DrawerNavItem(navKey: 'newsletters', label: 'Newsletters', icon: Icons.newspaper_rounded),
+    DrawerNavItem(navKey: 'dklic', label: 'Local Government Library', icon: Icons.menu_book_rounded),
+    DrawerNavItem(navKey: 'chatbot', label: 'Local Government Chatbot', icon: Icons.chat_bubble_outline_rounded),
+    DrawerNavItem(navKey: 'inquiries', label: 'Inquiry', icon: Icons.description_outlined),
+  ]),
+  DrawerNavGroup(label: 'Account', items: [
+    DrawerNavItem(navKey: 'profile', label: 'Settings', icon: Icons.settings_outlined),
+  ]),
+];
+
 /// The mobile equivalent of the web sidebar — a slide-out navigation drawer
 /// rather than a pinned column, since that's the native pattern for this many
 /// destinations (9-13 per role) on a phone screen. Same grouping/labels as
@@ -84,14 +115,26 @@ class AppDrawer extends StatelessWidget {
   final String currentKey;
   final Map<String, dynamic> user;
 
-  List<DrawerNavGroup> get _groups => role == 'adlg' ? kAdlgNavGroups : kSecNavGroups;
+  List<DrawerNavGroup> get _groups {
+    if (role == 'adlg') return kAdlgNavGroups;
+    if (role == 'ddlg') return kDdlgNavGroups;
+    return kSecNavGroups;
+  }
 
-  String get _roleLabel => role == 'adlg' ? 'Assistant Director LG' : 'Secretary UC';
+  String get _roleLabel {
+    if (role == 'adlg') return 'Assistant Director LG';
+    if (role == 'ddlg') return 'Deputy Director LG';
+    return 'Secretary UC';
+  }
 
   String? get _subtitle {
     if (role == 'adlg') {
       final tehsil = (user['adlg_profile'] as Map?)?['tehsil'] as String?;
       return tehsil != null ? 'ADLG · $tehsil' : _roleLabel;
+    }
+    if (role == 'ddlg') {
+      final district = (user['ddlg_profile'] as Map?)?['district'] as String?;
+      return district != null ? 'DDLG · $district' : _roleLabel;
     }
     final uc = (user['secretary_profile'] as Map?)?['union_council'] as String?;
     return uc != null ? 'Secretary · $uc' : _roleLabel;

@@ -11,7 +11,8 @@ import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
 import '../../widgets/case/document_preview.dart';
-import '../../widgets/performa/create_performa_sheet.dart';
+import '../../widgets/performa/performa_detail_sheet.dart';
+import '../../widgets/performa/performa_form_sheet.dart';
 import '../../widgets/performa/performa_responses_sheet.dart';
 
 class AdlgReportsScreen extends StatefulWidget {
@@ -126,9 +127,45 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const CreatePerformaSheet(),
+      builder: (_) => const PerformaFormSheet(),
     );
     if (created != null) _loadPerformas();
+  }
+
+  Future<void> _openEditPerforma(Performa p) async {
+    final updated = await showModalBottomSheet<Performa>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PerformaFormSheet(existing: p),
+    );
+    if (updated != null) _loadPerformas();
+  }
+
+  Future<void> _openViewDetails(Performa p) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PerformaDetailSheet(performa: p),
+    );
+  }
+
+  Future<void> _confirmDeletePerforma(Performa p) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Performa?'),
+        content: Text('"${p.title}" and all ${p.responsesCount ?? 0} secretary response(s) will be permanently deleted. This can\'t be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete', style: TextStyle(color: AppColors.danger))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await PerformaService.instance.deletePerforma(p.id);
+    if (ok) _loadPerformas();
   }
 
   Future<void> _openResponses(Performa p) async {
@@ -147,7 +184,10 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
       appBar: AppBar(
         title: const Text('Reports'),
         actions: [
-          if (_tab == 0) IconButton(onPressed: _openManageFields, icon: const Icon(Icons.tune_rounded), tooltip: 'Manage Additional Fields'),
+          // Always visible regardless of tab — hiding it behind the Daily
+          // Reports tab made it look "missing" when the client was viewing
+          // Performas.
+          IconButton(onPressed: _openManageFields, icon: const Icon(Icons.tune_rounded), tooltip: 'Manage Additional Fields'),
           if (_tab == 0)
             IconButton(
               onPressed: _exporting ? null : _export,
@@ -245,7 +285,14 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
                     child: Center(child: Text('No performas published yet.', style: TextStyle(color: AppColors.inkFaint))),
                   )
                 else
-                  ..._performas.map((p) => _PerformaCard(performa: p, totalSecretaries: _totalSecretaries, onTap: () => _openResponses(p))),
+                  ..._performas.map((p) => _PerformaCard(
+                        performa: p,
+                        totalSecretaries: _totalSecretaries,
+                        onTap: () => _openResponses(p),
+                        onViewDetails: () => _openViewDetails(p),
+                        onEdit: () => _openEditPerforma(p),
+                        onDelete: () => _confirmDeletePerforma(p),
+                      )),
               ],
             ),
           );
@@ -620,11 +667,21 @@ class _ManageFieldsSheetState extends State<_ManageFieldsSheet> {
 }
 
 class _PerformaCard extends StatefulWidget {
-  const _PerformaCard({required this.performa, required this.totalSecretaries, required this.onTap});
+  const _PerformaCard({
+    required this.performa,
+    required this.totalSecretaries,
+    required this.onTap,
+    required this.onViewDetails,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final Performa performa;
   final int totalSecretaries;
   final VoidCallback onTap;
+  final VoidCallback onViewDetails;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   State<_PerformaCard> createState() => _PerformaCardState();
@@ -658,8 +715,11 @@ class _PerformaCardState extends State<_PerformaCard> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Row(
+                children: [
               Container(
                 width: 40,
                 height: 40,
@@ -717,11 +777,32 @@ class _PerformaCardState extends State<_PerformaCard> {
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right_rounded, color: AppColors.inkFaint),
+                ],
+              ),
+              const Divider(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _actionIcon(Icons.visibility_outlined, 'View Details', widget.onViewDetails),
+                  _actionIcon(Icons.edit_outlined, 'Edit', widget.onEdit),
+                  _actionIcon(Icons.delete_outline_rounded, 'Delete', widget.onDelete, danger: true),
+                ],
+              ),
             ],
           ),
         ),
       ),
     ).animate().fadeIn(duration: 250.ms);
+  }
+
+  Widget _actionIcon(IconData icon, String label, VoidCallback onTap, {bool danger = false}) {
+    final color = danger ? AppColors.danger : AppColors.inkMuted;
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      tooltip: label,
+      visualDensity: VisualDensity.compact,
+    );
   }
 
   Widget _miniBadge(String label, Color color) {

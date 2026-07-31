@@ -103,10 +103,21 @@ class LiveMapView extends StatefulWidget {
   State<LiveMapView> createState() => _LiveMapViewState();
 }
 
-class _LiveMapViewState extends State<LiveMapView> with TickerProviderStateMixin {
+class _LiveMapViewState extends State<LiveMapView> {
   GoogleMapController? _controller;
-  late final AnimationController _moveController;
-  late final AnimationController _pulseController;
+
+  // GoogleMap is a native platform view — rebuilding its marker/circle/
+  // polyline sets is a real platform-channel round trip, not a cheap Flutter
+  // repaint like flutter_map's canvas. Driving that off a 60fps
+  // AnimationController (especially a *repeating* one for the pulse) floods
+  // the channel forever and reads as the whole app hanging. A slow manual
+  // timer (~4-5 updates/sec) is still visibly "live" but roughly 12x lighter.
+  Timer? _ticker;
+  static const _tickInterval = Duration(milliseconds: 220);
+  static const _moveDuration = Duration(milliseconds: 900);
+  double _pulsePhase = 0;
+  double _moveT = 1;
+  DateTime? _moveStartedAt;
 
   Map<int, LatLng> _renderedPositions = {};
   Map<int, LatLng> _animFrom = {};
@@ -129,10 +140,21 @@ class _LiveMapViewState extends State<LiveMapView> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _moveController = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
     _loadIcons();
     _ingestLocations(initial: true);
+    _ticker = Timer.periodic(_tickInterval, (_) => _onTick());
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    setState(() {
+      _pulsePhase = (_pulsePhase + 0.11) % 1.0;
+      if (_moveStartedAt != null) {
+        final elapsed = DateTime.now().difference(_moveStartedAt!);
+        _moveT = (elapsed.inMilliseconds / _moveDuration.inMilliseconds).clamp(0.0, 1.0);
+        if (_moveT >= 1.0) _moveStartedAt = null;
+      }
+    });
   }
 
   Future<void> _loadIcons() async {
@@ -164,8 +186,7 @@ class _LiveMapViewState extends State<LiveMapView> with TickerProviderStateMixin
 
   @override
   void dispose() {
-    _moveController.dispose();
-    _pulseController.dispose();
+    _ticker?.cancel();
     _alertHideTimer?.cancel();
     super.dispose();
   }
@@ -215,9 +236,11 @@ class _LiveMapViewState extends State<LiveMapView> with TickerProviderStateMixin
     _renderedPositions = newTo;
 
     if (initial) {
-      _moveController.value = 1;
+      _moveT = 1;
+      _moveStartedAt = null;
     } else {
-      _moveController.forward(from: 0);
+      _moveT = 0;
+      _moveStartedAt = DateTime.now();
     }
   }
 
@@ -283,91 +306,86 @@ class _LiveMapViewState extends State<LiveMapView> with TickerProviderStateMixin
     final initialCenter = widget.locations.isNotEmpty ? LatLng(widget.locations.first.lat, widget.locations.first.lng) : _fallbackCenter;
     final outsideNow = widget.locations.where((l) => l.fresh && _insideGeofence(l) == false).toList();
 
+    final t = Curves.easeInOut.transform(_moveT);
+    final pulse = _pulsePhase;
+
+    final markers = <Marker>{};
+    final circles = <Circle>{};
+    final polylines = <Polyline>{};
+
+    for (final uc in widget.unionCouncils.where((u) => u.hasGeofence)) {
+      circles.add(Circle(
+        circleId: CircleId('geofence_${uc.id}'),
+        center: LatLng(uc.lat!, uc.lng!),
+        radius: uc.geofenceRadius.toDouble(),
+        fillColor: AppColors.primary400.withValues(alpha: 0.08),
+        strokeColor: AppColors.primary400.withValues(alpha: 0.45),
+        strokeWidth: 1,
+      ));
+    }
+
+    for (final entry in _trails.entries) {
+      if (entry.value.length < 2) continue;
+      final selected = entry.key == _selectedSecretaryId;
+      polylines.add(Polyline(
+        polylineId: PolylineId('trail_${entry.key}'),
+        points: entry.value,
+        width: selected ? 4 : 3,
+        color: (selected ? AppColors.accent500 : AppColors.primary400).withValues(alpha: selected ? 0.85 : 0.5),
+      ));
+    }
+
+    for (final loc in widget.locations) {
+      final from = _animFrom[loc.secretaryId] ?? LatLng(loc.lat, loc.lng);
+      final to = _animTo[loc.secretaryId] ?? LatLng(loc.lat, loc.lng);
+      final point = _lerpLatLng(from, to, t);
+      final selected = loc.secretaryId == _selectedSecretaryId;
+
+      if (loc.fresh) {
+        circles.add(Circle(
+          circleId: CircleId('pulse_${loc.secretaryId}'),
+          center: point,
+          radius: 14 + pulse * 45,
+          fillColor: _dotColor(loc).withValues(alpha: (1 - pulse) * 0.35),
+          strokeWidth: 0,
+        ));
+      }
+      if (selected) {
+        circles.add(Circle(
+          circleId: CircleId('selected_${loc.secretaryId}'),
+          center: point,
+          radius: 28,
+          fillColor: AppColors.accent500.withValues(alpha: 0.18),
+          strokeColor: AppColors.accent500.withValues(alpha: 0.6),
+          strokeWidth: 2,
+        ));
+      }
+
+      markers.add(Marker(
+        markerId: MarkerId('sec_${loc.secretaryId}'),
+        position: point,
+        icon: _iconFor(loc),
+        rotation: _bearing[loc.secretaryId] ?? 0,
+        anchor: const Offset(0.5, 0.62),
+        onTap: () {
+          setState(() => _selectedSecretaryId = loc.secretaryId);
+          widget.onTapLocation(loc);
+        },
+      ));
+    }
+
     return Stack(
       children: [
-        AnimatedBuilder(
-          animation: Listenable.merge([_moveController, _pulseController]),
-          builder: (context, _) {
-            final t = Curves.easeInOut.transform(_moveController.value);
-            final pulse = _pulseController.value;
-
-            final markers = <Marker>{};
-            final circles = <Circle>{};
-            final polylines = <Polyline>{};
-
-            for (final uc in widget.unionCouncils.where((u) => u.hasGeofence)) {
-              circles.add(Circle(
-                circleId: CircleId('geofence_${uc.id}'),
-                center: LatLng(uc.lat!, uc.lng!),
-                radius: uc.geofenceRadius.toDouble(),
-                fillColor: AppColors.primary400.withValues(alpha: 0.08),
-                strokeColor: AppColors.primary400.withValues(alpha: 0.45),
-                strokeWidth: 1,
-              ));
-            }
-
-            for (final entry in _trails.entries) {
-              if (entry.value.length < 2) continue;
-              final selected = entry.key == _selectedSecretaryId;
-              polylines.add(Polyline(
-                polylineId: PolylineId('trail_${entry.key}'),
-                points: entry.value,
-                width: selected ? 4 : 3,
-                color: (selected ? AppColors.accent500 : AppColors.primary400).withValues(alpha: selected ? 0.85 : 0.5),
-              ));
-            }
-
-            for (final loc in widget.locations) {
-              final from = _animFrom[loc.secretaryId] ?? LatLng(loc.lat, loc.lng);
-              final to = _animTo[loc.secretaryId] ?? LatLng(loc.lat, loc.lng);
-              final point = _lerpLatLng(from, to, t);
-              final selected = loc.secretaryId == _selectedSecretaryId;
-
-              if (loc.fresh) {
-                circles.add(Circle(
-                  circleId: CircleId('pulse_${loc.secretaryId}'),
-                  center: point,
-                  radius: 14 + pulse * 45,
-                  fillColor: _dotColor(loc).withValues(alpha: (1 - pulse) * 0.35),
-                  strokeWidth: 0,
-                ));
-              }
-              if (selected) {
-                circles.add(Circle(
-                  circleId: CircleId('selected_${loc.secretaryId}'),
-                  center: point,
-                  radius: 28,
-                  fillColor: AppColors.accent500.withValues(alpha: 0.18),
-                  strokeColor: AppColors.accent500.withValues(alpha: 0.6),
-                  strokeWidth: 2,
-                ));
-              }
-
-              markers.add(Marker(
-                markerId: MarkerId('sec_${loc.secretaryId}'),
-                position: point,
-                icon: _iconFor(loc),
-                rotation: _bearing[loc.secretaryId] ?? 0,
-                anchor: const Offset(0.5, 0.62),
-                onTap: () {
-                  setState(() => _selectedSecretaryId = loc.secretaryId);
-                  widget.onTapLocation(loc);
-                },
-              ));
-            }
-
-            return GoogleMap(
-              initialCameraPosition: CameraPosition(target: initialCenter, zoom: 12),
-              onMapCreated: (controller) => _controller = controller,
-              markers: markers,
-              circles: circles,
-              polylines: polylines,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: false,
-            );
-          },
+        GoogleMap(
+          initialCameraPosition: CameraPosition(target: initialCenter, zoom: 12),
+          onMapCreated: (controller) => _controller = controller,
+          markers: markers,
+          circles: circles,
+          polylines: polylines,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          compassEnabled: false,
         ),
         if (outsideNow.isNotEmpty)
           Positioned(

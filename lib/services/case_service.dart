@@ -68,8 +68,21 @@ class CaseService {
     return DvCase.fromJson(response.data['data'] as Map<String, dynamic>);
   }
 
+  Future<List<DvCase>> indexForDdlg({String? status}) async {
+    final response = await _dio.get('/api/ddlg/cases', queryParameters: {if (status != null) 'status': status});
+    final list = (response.data['data'] as List).cast<Map<String, dynamic>>();
+    return list.map(DvCase.fromJson).toList();
+  }
+
+  Future<DvCase> showForDdlg(int caseId) async {
+    final response = await _dio.get('/api/ddlg/cases/$caseId');
+    return DvCase.fromJson(response.data['data'] as Map<String, dynamic>);
+  }
+
   Future<DvCase> show({required String role, required int caseId}) {
-    return role == 'adlg' ? showForAdlg(caseId) : showForSecretary(caseId);
+    if (role == 'adlg') return showForAdlg(caseId);
+    if (role == 'ddlg') return showForDdlg(caseId);
+    return showForSecretary(caseId);
   }
 
   // ------------------------------------------------------- Secretary: submit

@@ -273,11 +273,15 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
           const SizedBox(height: 16),
           _sectionCard(
             title: 'Hearings (${c.proceedings.length})',
-            trailing: TextButton.icon(
-              onPressed: _openAddHearing,
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Add Hearing'),
-            ),
+            // DDLG is read-only oversight — no hearing-recording endpoint
+            // exists for that role.
+            trailing: widget.role == 'ddlg'
+                ? null
+                : TextButton.icon(
+                    onPressed: _openAddHearing,
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Add Hearing'),
+                  ),
             child: ProceedingsList(proceedings: c.proceedings),
           ),
         ],
@@ -404,7 +408,9 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
       widgets.add(_infoBox('Awaiting Arbitration Council constitution by the Secretary.'));
     }
 
-    if (!isAdlg) {
+    // DDLG is read-only oversight — no case-action endpoints exist for that
+    // role, so only Secretary gets the actionable button here.
+    if (widget.role == 'sec') {
       if (['NOTICE_ISSUED', 'IN_PROCEEDINGS'].contains(c.status) && c.arbitration == null) {
         widgets.add(_actionButton('⚖️ Constitute Arbitration Council', _openConstituteArbitration));
       } else if (c.status == 'SUBMITTED') {

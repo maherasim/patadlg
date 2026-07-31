@@ -4,13 +4,16 @@ import 'adlg/attendance_screen.dart';
 import 'adlg/cases_screen.dart';
 import 'adlg/dashboard_screen.dart';
 import 'adlg/lbr_screen.dart';
+import 'adlg/ldr_screen.dart';
 import 'adlg/reports_screen.dart';
 import 'adlg/secretaries_screen.dart';
 import 'adlg/union_councils_screen.dart';
 import 'coming_soon_screen.dart';
 import 'ddlg/adlgs_screen.dart';
+import 'ddlg/cases_screen.dart';
 import 'ddlg/dashboard_screen.dart';
 import 'ddlg/lbr_screen.dart';
+import 'ddlg/ldr_screen.dart';
 import 'ddlg/reports_screen.dart';
 import 'ddlg/secretaries_screen.dart';
 import 'ddlg/tehsils_screen.dart';
@@ -21,6 +24,7 @@ import 'sec/cases_screen.dart';
 import 'sec/dashboard_screen.dart';
 import 'sec/first_login_password_screen.dart';
 import 'sec/lbr_screen.dart';
+import 'sec/ldr_screen.dart';
 import 'sec/reports_screen.dart';
 import 'signed_in_placeholder_screen.dart';
 
@@ -97,13 +101,20 @@ Widget screenForKey({required String role, required String navKey, required Map<
     if (role == 'ddlg') return DdlgReportsScreen(user: user);
     return SecReportsScreen(user: user);
   }
-  if (navKey == 'cases' && role != 'ddlg') {
-    return role == 'adlg' ? AdlgCasesScreen(user: user) : SecCasesScreen(user: user);
+  if (navKey == 'cases') {
+    if (role == 'adlg') return AdlgCasesScreen(user: user);
+    if (role == 'ddlg') return DdlgCasesScreen(user: user);
+    return SecCasesScreen(user: user);
   }
   if (navKey == 'lbr') {
     if (role == 'adlg') return AdlgLbrScreen(user: user);
     if (role == 'ddlg') return DdlgLbrScreen(user: user);
     return SecLbrScreen(user: user);
+  }
+  if (navKey == 'ldr') {
+    if (role == 'adlg') return AdlgLdrScreen(user: user);
+    if (role == 'ddlg') return DdlgLdrScreen(user: user);
+    return SecLdrScreen(user: user);
   }
   if (navKey == 'union-councils') {
     if (role == 'adlg') return AdlgUnionCouncilsScreen(user: user);

@@ -89,6 +89,60 @@ class PerformaService {
     }
   }
 
+  /// Mode is immutable once created (matches the backend) — not sent here.
+  /// [excelTemplate] is optional on edit (omit to keep the existing template).
+  Future<CaseActionResult<Performa>> updatePerforma({
+    required int id,
+    required String mode,
+    required String title,
+    String? description,
+    required String reportType,
+    String? deadline,
+    File? excelTemplate,
+    List<(String label, String type)> fields = const [],
+  }) async {
+    try {
+      final map = <String, dynamic>{
+        // Laravel doesn't parse multipart bodies on a real PUT — spoof it via
+        // _method so the optional template re-upload still works, same trick
+        // used on the web app.
+        '_method': 'PUT',
+        'title': title,
+        if (description != null && description.isNotEmpty) 'description': description,
+        'report_type': reportType,
+        if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
+      };
+
+      if (mode == 'excel' && excelTemplate != null) {
+        map['excel_template'] = await MultipartFile.fromFile(excelTemplate.path, filename: excelTemplate.path.split('/').last);
+      }
+      if (mode == 'form') {
+        for (var i = 0; i < fields.length; i++) {
+          map['fields[$i][label]'] = fields[i].$1;
+          map['fields[$i][type]'] = fields[i].$2;
+        }
+      }
+
+      final response = await _dio.post('/api/adlg/performas/$id', data: FormData.fromMap(map));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return CaseActionResult.success(Performa.fromJson(response.data['data'] as Map<String, dynamic>));
+      }
+      return CaseActionResult.failure(_errorFrom(DioException(requestOptions: response.requestOptions, response: response), 'Could not update performa.'));
+    } on DioException catch (e) {
+      return CaseActionResult.failure(_errorFrom(e, 'Could not update performa. Check your connection.'));
+    }
+  }
+
+  Future<bool> deletePerforma(int id) async {
+    try {
+      final response = await _dio.delete('/api/adlg/performas/$id');
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<PerformaResponse>> responses(int performaId) async {
     final response = await _dio.get('/api/adlg/performas/$performaId/responses');
     final list = (response.data['data'] as List).cast<Map<String, dynamic>>();

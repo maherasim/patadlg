@@ -237,6 +237,47 @@ class AttendanceService {
     return _downloadFile('/api/adlg/movement-log/export', fallbackFilename: 'Movement_Registry.xlsx');
   }
 
+  /// DDLG's district-wide attendance list — same shape as [indexForAdlg] but
+  /// spans every secretary under every tehsil in the district. DDLG has no
+  /// live-locations route (view-only, no Live Map tab on the web app either).
+  Future<(List<AttendanceRecord>, AttendanceMeta)> indexForDdlg({
+    int? unionCouncilId,
+    String? from,
+    String? to,
+  }) async {
+    final response = await _dio.get('/api/ddlg/attendance', queryParameters: {
+      if (unionCouncilId != null) 'union_council_id': unionCouncilId,
+      if (from != null) 'from': from,
+      if (to != null) 'to': to,
+    });
+
+    final list = (response.data['data'] as List).cast<Map<String, dynamic>>();
+    final meta = AttendanceMeta.fromJson(response.data['meta'] as Map<String, dynamic>);
+    return (list.map(AttendanceRecord.fromJson).toList(), meta);
+  }
+
+  Future<List<MovementLog>> movementIndexForDdlg() async {
+    final response = await _dio.get('/api/ddlg/movement-log');
+    final list = (response.data['data'] as List).cast<Map<String, dynamic>>();
+    return list.map(MovementLog.fromJson).toList();
+  }
+
+  Future<File> exportAttendanceDdlg({int? unionCouncilId, String? from, String? to}) {
+    return _downloadFile(
+      '/api/ddlg/attendance/analytics-export',
+      queryParameters: {
+        if (unionCouncilId != null) 'union_council_id': unionCouncilId,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+      fallbackFilename: 'Attendance_Export.xlsx',
+    );
+  }
+
+  Future<File> exportMovementLogDdlg() {
+    return _downloadFile('/api/ddlg/movement-log/export', fallbackFilename: 'Movement_Registry.xlsx');
+  }
+
   Future<File> _downloadFile(
     String path, {
     Map<String, dynamic>? queryParameters,

@@ -2,11 +2,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/performa.dart';
 import '../../services/performa_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/export_download.dart';
 
 /// Secretary-only — downloads the ADLG's blank template (if attached) and
 /// uploads a filled copy back for an excel-mode Performa. A scanned PDF is
@@ -30,7 +30,7 @@ class _UploadPerformaSheetState extends State<UploadPerformaSheet> {
     setState(() => _downloadingTemplate = true);
     try {
       final file = await PerformaService.instance.downloadTemplateForSecretary(widget.performa.id);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Performa Template'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) setState(() => _error = "Couldn't download the template.");
     } finally {

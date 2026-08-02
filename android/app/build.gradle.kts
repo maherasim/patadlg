@@ -19,6 +19,17 @@ if (localPropertiesFile.exists()) {
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
+// key.properties is gitignored too — release builds were previously signed
+// with the shared Android debug certificate (same key on every developer's
+// machine), which several banking apps' fraud-detection SDKs specifically
+// flag as a known malware/unpublished-app signature. This is the real,
+// unique signing identity for this app going forward.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.example.patadlg"
     compileSdk = flutter.compileSdkVersion
@@ -50,11 +61,23 @@ android {
         manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Falls back to the debug key only if key.properties is missing
+            // (e.g. a fresh checkout before the keystore has been set up) —
+            // never silently ship a debug-signed "release" build otherwise.
+            signingConfig = if (keystorePropertiesFile.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 }

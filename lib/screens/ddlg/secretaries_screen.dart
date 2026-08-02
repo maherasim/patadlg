@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/directory_user.dart';
 import '../../services/directory_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/export_download.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
@@ -69,7 +69,7 @@ class _DdlgSecretariesScreenState extends State<DdlgSecretariesScreen> {
     setState(() => _exporting = true);
     try {
       final file = await DirectoryService.instance.exportSecretaries(role: 'ddlg');
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Secretaries Export'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't generate the export. Please try again.")));
     } finally {

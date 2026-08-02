@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/performa.dart';
 import '../../services/performa_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/export_download.dart';
 import '../case/document_preview.dart';
 
 /// ADLG-only — lists every secretary's submission for one Performa, with an
@@ -55,7 +55,7 @@ class _PerformaResponsesSheetState extends State<PerformaResponsesSheet> {
     setState(() => _exporting = true);
     try {
       final file = await PerformaService.instance.exportResponses(widget.performa.id);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Performa Responses Export'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't generate the export. Please try again.")));
     } finally {

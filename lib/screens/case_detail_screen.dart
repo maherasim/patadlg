@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/dv_case.dart';
 import '../services/case_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/export_download.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/case/add_hearing_sheet.dart';
 import '../widgets/case/case_stepper.dart';
@@ -143,7 +143,7 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
     setState(() => _exportingNotesheet = true);
     try {
       final file = await CaseService.instance.downloadNotesheet(role: widget.role, caseId: widget.caseId);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Case Notesheet'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) _showSnack("Couldn't generate the notesheet.");
     } finally {
@@ -155,7 +155,7 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
     setState(() => _exportingFullFile = true);
     try {
       final file = await CaseService.instance.downloadFullCaseFile(role: widget.role, caseId: widget.caseId);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Full Case File'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) _showSnack("Couldn't generate the case file.");
     } finally {
@@ -269,49 +269,51 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
         ],
         const SizedBox(height: 16),
         ..._actionSection(c),
-        if (c.canRecordHearing) ...[
+        // DDLG is read-only district oversight — the web app deliberately
+        // never renders hearing records or Notesheet/Full Case File download
+        // buttons for that role (no backend route exists for either PDF, so
+        // showing them would just be a dead end).
+        if (widget.role != 'ddlg' && c.canRecordHearing) ...[
           const SizedBox(height: 16),
           _sectionCard(
             title: 'Hearings (${c.proceedings.length})',
-            // DDLG is read-only oversight — no hearing-recording endpoint
-            // exists for that role.
-            trailing: widget.role == 'ddlg'
-                ? null
-                : TextButton.icon(
-                    onPressed: _openAddHearing,
-                    icon: const Icon(Icons.add_rounded, size: 16),
-                    label: const Text('Add Hearing'),
-                  ),
+            trailing: TextButton.icon(
+              onPressed: _openAddHearing,
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Add Hearing'),
+            ),
             child: ProceedingsList(proceedings: c.proceedings),
           ),
         ],
-        const SizedBox(height: 16),
-        _sectionCard(
-          title: 'Documents',
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _exportingNotesheet ? null : _downloadNotesheet,
-                  icon: _exportingNotesheet
-                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.description_outlined, size: 16),
-                  label: const Text('Notesheet'),
+        if (widget.role != 'ddlg') ...[
+          const SizedBox(height: 16),
+          _sectionCard(
+            title: 'Documents',
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _exportingNotesheet ? null : _downloadNotesheet,
+                    icon: _exportingNotesheet
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.description_outlined, size: 16),
+                    label: const Text('Notesheet'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _exportingFullFile ? null : _downloadFullCaseFile,
-                  icon: _exportingFullFile
-                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.folder_outlined, size: 16),
-                  label: const Text('Full File'),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _exportingFullFile ? null : _downloadFullCaseFile,
+                    icon: _exportingFullFile
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.folder_outlined, size: 16),
+                    label: const Text('Full File'),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

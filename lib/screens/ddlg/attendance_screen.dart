@@ -1,16 +1,13 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../models/attendance_record.dart';
-import '../../models/live_location.dart';
 import '../../models/union_council.dart';
 import '../../services/attendance_service.dart';
+import '../../services/directory_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/export_download.dart';
 import '../../widgets/app_drawer.dart';
-import '../../widgets/live_map/live_map_view.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
 import '../../widgets/status_badge.dart';
@@ -18,26 +15,28 @@ import '../../utils/time_format.dart';
 
 String _fmtDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-class AdlgAttendanceScreen extends StatefulWidget {
-  const AdlgAttendanceScreen({super.key, required this.user});
+/// District-wide attendance — every secretary across every tehsil, view
+/// only. No Live Map tab here: DDLG has no live-locations route on the
+/// backend, matching ddlg/Attendance.jsx exactly (Attendance + Movement
+/// Registry tabs only).
+class DdlgAttendanceScreen extends StatefulWidget {
+  const DdlgAttendanceScreen({super.key, required this.user});
 
   final Map<String, dynamic> user;
 
   @override
-  State<AdlgAttendanceScreen> createState() => _AdlgAttendanceScreenState();
+  State<DdlgAttendanceScreen> createState() => _DdlgAttendanceScreenState();
 }
 
-class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with SingleTickerProviderStateMixin {
+class _DdlgAttendanceScreenState extends State<DdlgAttendanceScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  Timer? _liveMapTimer;
 
   bool _loading = true;
   String? _error;
   List<AttendanceRecord> _records = [];
   AttendanceMeta? _meta;
   List<MovementLog> _movements = [];
-  List<LiveLocation> _liveLocations = [];
-  List<Map<String, dynamic>> _ucOptions = [];
+  List<UnionCouncil> _unionCouncils = [];
 
   int? _filterUcId;
   DateTime? _filterFrom;
@@ -49,15 +48,13 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadAll();
-    _liveMapTimer = Timer.periodic(const Duration(seconds: 20), (_) => _refreshLiveLocations());
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _liveMapTimer?.cancel();
     super.dispose();
   }
 
@@ -68,14 +65,13 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
     });
     try {
       final results = await Future.wait([
-        AttendanceService.instance.indexForAdlg(
+        AttendanceService.instance.indexForDdlg(
           unionCouncilId: _filterUcId,
           from: _filterFrom != null ? _fmtDate(_filterFrom!) : null,
           to: _filterTo != null ? _fmtDate(_filterTo!) : null,
         ),
-        AttendanceService.instance.movementIndexForAdlg(),
-        AttendanceService.instance.liveLocations(),
-        if (_ucOptions.isEmpty) AttendanceService.instance.unionCouncilsForAdlg(),
+        AttendanceService.instance.movementIndexForDdlg(),
+        if (_unionCouncils.isEmpty) DirectoryService.instance.unionCouncilsForDdlg(),
       ]);
       if (!mounted) return;
       final (records, meta) = results[0] as (List<AttendanceRecord>, AttendanceMeta);
@@ -83,8 +79,7 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
         _records = records;
         _meta = meta;
         _movements = results[1] as List<MovementLog>;
-        _liveLocations = results[2] as List<LiveLocation>;
-        if (results.length > 3) _ucOptions = results[3] as List<Map<String, dynamic>>;
+        if (results.length > 2) _unionCouncils = results[2] as List<UnionCouncil>;
         _loading = false;
       });
     } catch (_) {
@@ -93,16 +88,6 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
         _error = "Couldn't load attendance data.";
         _loading = false;
       });
-    }
-  }
-
-  Future<void> _refreshLiveLocations() async {
-    try {
-      final locations = await AttendanceService.instance.liveLocations();
-      if (!mounted) return;
-      setState(() => _liveLocations = locations);
-    } catch (_) {
-      // Best-effort periodic refresh.
     }
   }
 
@@ -133,11 +118,12 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
                 const SizedBox(height: 8),
                 DropdownButtonFormField<int?>(
                   initialValue: ucId,
+                  isExpanded: true,
                   items: [
                     const DropdownMenuItem(value: null, child: Text('All UCs')),
-                    ..._ucOptions.map((uc) => DropdownMenuItem(
-                          value: uc['id'] as int,
-                          child: Text(uc['uc_no'] != null ? '${uc['uc_no']} · ${uc['name']}' : '${uc['name']}'),
+                    ..._unionCouncils.map((uc) => DropdownMenuItem(
+                          value: uc.id,
+                          child: Text(uc.ucNo != null ? '${uc.ucNo} · ${uc.name}' : uc.name, overflow: TextOverflow.ellipsis),
                         )),
                   ],
                   onChanged: (v) => setSheetState(() => ucId = v),
@@ -192,7 +178,7 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
   Future<void> _exportAttendance() async {
     setState(() => _exportingAttendance = true);
     try {
-      final file = await AttendanceService.instance.exportAttendance(
+      final file = await AttendanceService.instance.exportAttendanceDdlg(
         unionCouncilId: _filterUcId,
         from: _filterFrom != null ? _fmtDate(_filterFrom!) : null,
         to: _filterTo != null ? _fmtDate(_filterTo!) : null,
@@ -208,7 +194,7 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
   Future<void> _exportMovementLog() async {
     setState(() => _exportingMovement = true);
     try {
-      final file = await AttendanceService.instance.exportMovementLog();
+      final file = await AttendanceService.instance.exportMovementLogDdlg();
       if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) _showExportError();
@@ -238,23 +224,17 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
           labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           tabs: const [
             Tab(text: 'Attendance'),
-            Tab(text: 'Live Map'),
             Tab(text: 'Movement Log'),
           ],
         ),
       ),
-      drawer: AppDrawer(role: 'adlg', currentKey: 'attendance', user: widget.user),
+      drawer: AppDrawer(role: 'ddlg', currentKey: 'attendance', user: widget.user),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2.4))
           : _error != null
               ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.inkMuted)))
               : TabBarView(
                   controller: _tabController,
-                  // The Live Map tab needs its own drag gestures for panning —
-                  // if TabBarView also claims horizontal drags, dragging the
-                  // map gets misread as a swipe-to-next-tab. Tabs are still
-                  // reachable via the tab bar above, just not by swiping.
-                  physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _AttendanceTab(
                       records: _records,
@@ -264,11 +244,6 @@ class _AdlgAttendanceScreenState extends State<AdlgAttendanceScreen> with Single
                       onRefresh: _loadAll,
                       onOpenFilters: _openFilterSheet,
                       onExport: _exportAttendance,
-                    ),
-                    _LiveMapTab(
-                      locations: _liveLocations,
-                      unionCouncils: _ucOptions.map(UnionCouncil.fromJson).toList(),
-                      onRefresh: _refreshLiveLocations,
                     ),
                     _MovementTab(
                       logs: _movements,
@@ -347,6 +322,8 @@ class _AttendanceTab extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
+          const Text('Every secretary across your district — view only', style: TextStyle(fontSize: 11.5, color: AppColors.inkMuted)),
+          const SizedBox(height: 14),
           if (meta != null)
             Row(
               children: [
@@ -463,148 +440,6 @@ class _RecordTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// A real OpenStreetMap-tiled live tracking view — secretary dots colored by
-/// freshness + geofence status (see [LiveMapView]), each UC's geofence drawn
-/// as a circle, and a short in-memory movement trail per secretary.
-class _LiveMapTab extends StatelessWidget {
-  const _LiveMapTab({required this.locations, required this.unionCouncils, required this.onRefresh});
-
-  final List<LiveLocation> locations;
-  final List<UnionCouncil> unionCouncils;
-  final Future<void> Function() onRefresh;
-
-  void _showDetails(BuildContext context, LiveLocation loc) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(loc.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
-            const SizedBox(height: 4),
-            Text(loc.unionCouncil ?? '', style: const TextStyle(fontSize: 13, color: AppColors.inkMuted)),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Icon(loc.fresh ? Icons.circle : Icons.circle_outlined, size: 10, color: loc.fresh ? AppColors.primary500 : AppColors.inkFaint),
-                const SizedBox(width: 8),
-                Text(
-                  loc.fresh ? 'Live (<5 min ago)' : _minutesAgoLabel(loc.lastSeenAt),
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.ink),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('${loc.lat.toStringAsFixed(5)}, ${loc.lng.toStringAsFixed(5)}',
-                style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.inkFaint)),
-            if (loc.accuracyMeters != null) ...[
-              const SizedBox(height: 4),
-              Text('±${loc.accuracyMeters!.round()}m accuracy', style: const TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _minutesAgoLabel(DateTime? lastSeen) {
-    if (lastSeen == null) return 'Last seen unknown';
-    return detailedTimeAgo(lastSeen);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (locations.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: onRefresh,
-        child: ListView(
-          children: const [
-            SizedBox(height: 100),
-            Icon(Icons.location_off_rounded, size: 40, color: AppColors.inkFaint),
-            SizedBox(height: 14),
-            Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'No live locations yet. Secretaries share their location automatically during working hours (Mon–Sat, 9AM–5PM).',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.inkFaint, fontSize: 12.5),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final freshLocations = locations.where((l) => l.fresh).toList();
-    final freshOutsideCount = freshLocations.where(_isOutside).length;
-    final freshInsideCount = freshLocations.length - freshOutsideCount;
-    final staleCount = locations.length - freshLocations.length;
-
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-            child: Wrap(
-              spacing: 14,
-              runSpacing: 6,
-              children: [
-                _legendDot(AppColors.primary500, 'Live, in UC: $freshInsideCount'),
-                _legendDot(AppColors.danger, 'Live, outside UC: $freshOutsideCount'),
-                _legendDot(AppColors.inkFaint, 'Older: $staleCount'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: LiveMapView(
-                  locations: locations,
-                  unionCouncils: unionCouncils,
-                  onTapLocation: (loc) => _showDetails(context, loc),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  bool _isOutside(LiveLocation loc) {
-    UnionCouncil? uc;
-    for (final u in unionCouncils) {
-      if (u.id == loc.unionCouncilId) {
-        uc = u;
-        break;
-      }
-    }
-    if (uc == null || !uc.hasGeofence) return false;
-    return distanceMeters(loc.lat, loc.lng, uc.lat!, uc.lng!) > uc.geofenceRadius;
-  }
-
-  Widget _legendDot(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
-      ],
     );
   }
 }

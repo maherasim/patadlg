@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/union_council.dart';
 import '../../services/directory_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/export_download.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/directory/union_council_form_sheet.dart';
 import '../../widgets/logout_action.dart';
@@ -83,7 +83,7 @@ class _AdlgUnionCouncilsScreenState extends State<AdlgUnionCouncilsScreen> {
     setState(() => _exporting = true);
     try {
       final file = await DirectoryService.instance.exportUnionCouncils(role: 'adlg');
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Union Councils Export'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't generate the export. Please try again.")));
     } finally {

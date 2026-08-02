@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/lbr_case.dart';
 import '../services/lbr_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/export_download.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/case/document_preview.dart';
 import '../widgets/lbr/lbr_certificate_sheet.dart';
@@ -105,7 +105,7 @@ class _LbrDetailScreenState extends State<LbrDetailScreen> {
     setState(() => _exportingNotesheet = true);
     try {
       final file = await LbrService.instance.downloadNotesheet(role: widget.role, id: widget.caseId);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Birth Registration Notesheet'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) _showSnack("Couldn't generate the notesheet.");
     } finally {

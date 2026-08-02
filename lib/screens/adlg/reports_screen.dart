@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/daily_report.dart';
 import '../../models/performa.dart';
 import '../../services/performa_service.dart';
 import '../../services/report_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/export_download.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/logout_action.dart';
 import '../../widgets/notification_bell.dart';
@@ -114,7 +114,7 @@ class _AdlgReportsScreenState extends State<AdlgReportsScreen> {
     setState(() => _exporting = true);
     try {
       final file = await ReportService.instance.exportReports();
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Daily Reports Export'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't generate the export. Please try again.")));
     } finally {
@@ -694,7 +694,7 @@ class _PerformaCardState extends State<_PerformaCard> {
     setState(() => _downloadingTemplate = true);
     try {
       final file = await PerformaService.instance.downloadTemplateForAdlg(widget.performa.id);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Performa Template'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't download the template.")));
     } finally {

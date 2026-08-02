@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/death_case.dart';
 import '../services/death_case_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/export_download.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/case/document_preview.dart';
 import '../widgets/ldr/ldr_certificate_sheet.dart';
@@ -105,7 +105,7 @@ class _LdrDetailScreenState extends State<LdrDetailScreen> {
     setState(() => _exportingNotesheet = true);
     try {
       final file = await DeathCaseService.instance.downloadNotesheet(role: widget.role, id: widget.caseId);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Death Registration Notesheet'));
+      if (mounted) await saveExportedFile(context, file);
     } catch (_) {
       if (mounted) _showSnack("Couldn't generate the notesheet.");
     } finally {

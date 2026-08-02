@@ -302,14 +302,6 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
         children: [
           const Text("Today's Daily Report", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 14),
-          const Text('Daily Remarks', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _remarksController,
-            maxLines: 4,
-            decoration: const InputDecoration(hintText: "Today's activities…"),
-          ),
-          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(child: _CounterField(label: 'Nikah Reg.', value: _nikah, onChanged: (v) => setState(() => _nikah = v))),
@@ -324,6 +316,14 @@ class _SecReportsScreenState extends State<SecReportsScreen> {
               const SizedBox(width: 10),
               Expanded(child: _CounterField(label: 'Complaints', value: _complaint, onChanged: (v) => setState(() => _complaint = v))),
             ],
+          ),
+          const SizedBox(height: 18),
+          const Text('Daily Remarks', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _remarksController,
+            maxLines: 4,
+            decoration: const InputDecoration(hintText: "Today's activities…"),
           ),
           if (_adlgFields.isNotEmpty) ...[
             const SizedBox(height: 20),
